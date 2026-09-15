@@ -41,6 +41,10 @@ modules:
       nerd-fonts:
         - Inconsolata # no spaces, no "Nerd Font" suffix
 
+  # bakes `ujust setup-nix` / `setup-home-manager` etc. into the image, so a
+  # fresh install can pull down the Home Manager config in two commands
+  - type: justfiles
+    validate: true
 
   - type: default-flatpaks
     configurations:
@@ -51,5 +55,7 @@ modules:
           - org.mozilla.firefox
           - com.jetbrains.IntelliJ-IDEA-Community
       - scope: user # Also add Flathub user repo, but no user packages
+
+  # no dotfiles module here: Home Manager owns layer 2 (see the nix-config repo)
 
   - type: signing # this sets up the proper policy & signing files for signed images to work fully
