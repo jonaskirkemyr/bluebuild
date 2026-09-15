@@ -19,15 +19,21 @@ modules:
       - source: system
         destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
 
+  # only things that must be system-wide: the login shell, and GUI binaries that
+  # need the system GL drivers or host toolchains. everything else is Home
+  # Manager's job — see docs/SETUP.md
   - type: dnf
     repos:
-      copr:
-        - atim/starship
+      keys:
+        - https://packages.microsoft.com/keys/microsoft.asc
+      files:
+        - vscode.repo # files/dnf/vscode.repo
     install:
       packages:
         - micro
         - zsh # login shell must be a system path. ublue removes /usr/bin/chsh — use `ujust set-default-shell`
         - kitty # from the RPM so it gets the system GL drivers (this is what nixGL worked around)
+        - code # VS Code. RPM, not flatpak: the sandbox can't see the nix store or direnv
 
   # nerd font installed system-wide so fontconfig serves it to non-Nix apps too
   - type: fonts

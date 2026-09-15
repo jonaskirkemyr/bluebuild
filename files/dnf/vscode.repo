@@ -1,0 +1,10 @@
+[code]
+name=Visual Studio Code
+baseurl=https://packages.microsoft.com/yumrepos/vscode
+enabled=1
+type=rpm-md
+gpgcheck=1
+gpgkey=https://packages.microsoft.com/keys/microsoft.asc
+# Written by hand rather than using Microsoft's own
+# https://packages.microsoft.com/yumrepos/vscode/config.repo, which ships
+# gpgcheck=0. This file keeps signature checking on.
