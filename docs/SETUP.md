@@ -7,10 +7,11 @@ Commands, in order. For *why* the setup is split the way it is, see [GETTING_STA
 The image ships `ujust` recipes for all of this ([`files/justfiles/nix.just`](../files/justfiles/nix.just)), so there is nothing to copy-paste from a browser.
 
 ```bash
-ujust setup-nix              # installs Nix; asks for your password
+ujust setup-nix                          # installs Nix; asks for your password
 # log out and back in
-ujust setup-home-manager     # clones nix-config, applies your shell/prompt/dotfiles
-ujust set-default-shell      # switches your login shell to zsh
+ujust setup-home-manager                 # clones nix-config, applies shell/prompt/dotfiles
+ujust set-git-identity <username>        # name, email and signing key
+ujust set-default-shell                  # switches your login shell to zsh
 # log out and back in
 ```
 
@@ -18,13 +19,25 @@ That's it. After the second login you have your zsh, starship prompt, aliases, g
 
 Run `ujust` with no arguments to see every recipe the image provides.
 
+### About `set-git-identity`
+
+The `nix-config` repo is public and contains nothing identifying — no name, email or signing key. Those go in an untracked `~/.config/git/identity`, which this recipe writes for you from a GitHub username: it fetches `https://github.com/<username>.gpg` (the *public* half of your uploaded keys) and pulls the fingerprint, name and email out of it. Nothing is imported into your keyring.
+
+It only enables `commit.gpgsign` if the matching **private** key is actually present — GitHub can't hand you one of those. So on a genuinely fresh machine:
+
+```bash
+gpg --import /path/to/your-secret-key-backup.asc
+ujust set-git-identity <username>         # re-run; signing now turns on
+```
+
 ## Everyday tasks
 
 | I want to... | Do this |
 |---|---|
 | add/remove a system package, Flatpak or font | edit [`recipes/recipe.yml`](../recipes/recipe.yml), push, then `ujust update` on the machine |
-| change my `.zshrc`, aliases, prompt, git config | edit `~/nix-config/home/home.nix`, then `home-manager switch --flake ~/nix-config#jonask` |
+| change my `.zshrc`, aliases, prompt, git config | edit `~/nix-config/home/home.nix`, then `home-manager switch --flake ~/nix-config#$USER` |
 | pull my config changes from another machine | `ujust update-home-manager` |
+| change my git name/email/signing key | `ujust set-git-identity <username>` |
 | undo a bad Home Manager change | `home-manager generations`, then run the `activate` path of an older one |
 | undo a bad image update | `rpm-ostree rollback && systemctl reboot` |
 | give one project its own toolchain | see below |
@@ -87,6 +100,8 @@ From then on, `cd` into the directory and `node` is 20; `cd` out and it's gone. 
 | `nix: command not found` after a Fedora major upgrade | re-run `ujust setup-nix`; the installer sometimes needs to re-apply itself |
 | edits to `~/.zshrc` keep vanishing | expected — Home Manager owns that file now. Edit `home/home.nix` and switch |
 | new shell has no prompt/aliases | your login shell is still bash: `ujust set-default-shell` |
+| git says "please tell me who you are" | `~/.config/git/identity` is missing: `ujust set-git-identity <username>` |
+| `git commit` fails: "secret key not available" | the signing key in your identity file isn't in this keyring — `gpg --import` your backup, then re-run `set-git-identity` |
 | Flatpaks missing after a fresh install | `default-flatpaks` installs on first boot, not at build time; give it a few minutes |
 | image update didn't take | `rpm-ostree status` — an update is *staged*, it applies on reboot |
 | a rolled-back image still has broken tools | the Nix store lives outside the image, so `rpm-ostree rollback` doesn't touch it; use `home-manager generations` |

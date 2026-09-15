@@ -296,16 +296,17 @@ Keep a backup of `cosign.key` somewhere safe (a password manager). It's git-igno
 
 ```bash
 # --- on your machine ---
-rpm-ostree status                # what's booted and what's staged
-rpm-ostree upgrade               # pull the newest image now
-systemctl reboot                 # apply a staged update
-rpm-ostree rollback              # go back to the previous image
-rpm -q <package>                 # is this package in my image?
-ujust                            # list every shortcut, mine and Universal Blue's
-ujust setup-nix                  # install Nix (once per machine)
-ujust setup-home-manager         # clone + apply the nix-config repo (once)
-ujust update-home-manager        # pull + re-apply it (day to day)
-ujust set-default-shell          # switch login shell to zsh
+rpm-ostree status                 # what's booted and what's staged
+rpm-ostree upgrade                # pull the newest image now
+systemctl reboot                  # apply a staged update
+rpm-ostree rollback               # go back to the previous image
+rpm -q <package>                  # is this package in my image?
+ujust                             # list every shortcut, mine and Universal Blue's
+ujust setup-nix                   # install Nix (once per machine)
+ujust setup-home-manager          # clone + apply the nix-config repo (once)
+ujust update-home-manager         # pull + re-apply it (day to day)
+ujust set-git-identity <username> # write ~/.config/git/identity from GitHub
+ujust set-default-shell           # switch login shell to zsh
 
 # --- in this repo ---
 bluebuild build ./recipes/recipe.yml     # test the recipe locally
