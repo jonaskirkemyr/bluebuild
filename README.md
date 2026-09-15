@@ -4,6 +4,10 @@ My personal KDE Plasma desktop image, built on [Fedora Kinoite](https://fedorapr
 
 The image is defined declaratively in [`recipes/recipe.yml`](recipes/recipe.yml) — packages, flatpaks and system files are added there, not installed on the running machine. GitHub Actions rebuilds and publishes the image nightly, and the desktop picks up changes on its next update.
 
+**Just installed this image? [docs/SETUP.md](docs/SETUP.md)** is the command-by-command guide: three `ujust` commands get you your shell, dotfiles and Nix. It also has the table for deciding whether a given thing belongs in the image, in Home Manager, or in a per-project flake.
+
+**New to BlueBuild? [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** explains the model — how to add software, how builds are triggered, updating and rolling back, and what to do when a build fails.
+
 ## Installation
 
 > [!WARNING]  
