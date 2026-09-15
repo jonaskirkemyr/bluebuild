@@ -26,13 +26,15 @@ modules:
     install:
       packages:
         - micro
-        - starship
-    remove:
-      packages:
-        # example: removing firefox (in favor of the flatpak)
-        # "firefox" is the main package, "firefox-langpacks" is a dependency
-        - firefox
-        - firefox-langpacks # also remove firefox dependency (not required for all packages, this is a special case)
+        - zsh # login shell must be a system path. ublue removes /usr/bin/chsh — use `ujust set-default-shell`
+        - kitty # from the RPM so it gets the system GL drivers (this is what nixGL worked around)
+
+  # nerd font installed system-wide so fontconfig serves it to non-Nix apps too
+  - type: fonts
+    fonts:
+      nerd-fonts:
+        - Inconsolata # no spaces, no "Nerd Font" suffix
+
 
   - type: default-flatpaks
     configurations:
@@ -41,7 +43,7 @@ modules:
         # If no repo information is specified, Flathub will be used by default
         install: # system flatpaks we want all users to have and not remove
           - org.mozilla.firefox
-          - org.gnome.Loupe
+          - com.jetbrains.IntelliJ-IDEA-Community
       - scope: user # Also add Flathub user repo, but no user packages
 
   - type: signing # this sets up the proper policy & signing files for signed images to work fully
