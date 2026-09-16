@@ -13,26 +13,60 @@ hm_release := "release-25.11"
 # must match the `programs.git.includes` path in the nix-config repo
 identity_file := ".config/git/identity"
 
+# Where the Determinate installer puts Nix, regardless of what PATH says.
+#
+# This matters because `just` runs every recipe in a fresh *non-login,
+# non-interactive* bash. The installer only makes Nix visible to login shells:
+# it appends a line sourcing nix-daemon.sh to the shell profile files
+# (`/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh`, hardcoded as
+# PROFILE_NIX_FILE_SHELL in nix-installer). So `command -v nix` inside a recipe
+# reports nothing on a perfectly good install until the login shell has re-read
+# its profile — which is what "log out and back in" was working around.
+#
+# The recipes below source that file themselves instead, so they work the moment
+# `setup-nix` finishes and do not care how the terminal was started.
+nix_profile := "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
+nix_bin := "/nix/var/nix/profiles/default/bin"
+
 # Install Nix (Determinate Systems installer: handles ostree and SELinux)
 setup-nix:
     #!/usr/bin/env bash
     set -euo pipefail
-    if command -v nix >/dev/null 2>&1; then
-        echo "Nix is already installed: $(nix --version)"
+    # test the install location, not PATH. `command -v nix` here would miss an
+    # existing install and re-run the installer, which then aborts on its own
+    # pre-flight check — with the confusing result that installing "twice" leaves
+    # you no better off.
+    if [[ -x "{{ nix_bin }}/nix" ]]; then
+        echo "Nix is already installed: $("{{ nix_bin }}/nix" --version)"
+        echo "If 'nix' is not on your PATH, that is a shell-profile issue, not a"
+        echo "missing install — the ujust recipes do not care either way."
         exit 0
     fi
     echo "Installing Nix. You will be asked for your password."
     curl -fsSL https://install.determinate.systems/nix | sh -s -- install
     echo
-    echo "Done. Log out and back in so the profile script is sourced, then run:"
+    echo "Done. Next:"
     echo "    ujust setup-home-manager"
+    echo
+    echo "Log out and back in as well, so 'nix' is on your own PATH interactively."
 
 # Clone the Home Manager config and apply it (first run on a new machine)
 setup-home-manager:
     #!/usr/bin/env bash
     set -euo pipefail
+    # nix-daemon.sh reads variables it has not set, so -u has to come off for it
+    if [[ -e "{{ nix_profile }}" ]]; then
+        set +u
+        . "{{ nix_profile }}"
+        set -u
+    fi
+    export PATH="$HOME/.nix-profile/bin:{{ nix_bin }}:$PATH"
     if ! command -v nix >/dev/null 2>&1; then
-        echo "Nix not found. Run 'ujust setup-nix' first, then log out and back in."
+        echo "Nix not found at {{ nix_bin }}/nix. Run 'ujust setup-nix' first." >&2
+        echo >&2
+        echo "If you have already run it, check what the installer left behind:" >&2
+        echo "    ls -l {{ nix_bin }}/nix" >&2
+        echo "    systemctl status nix.mount nix-daemon.socket" >&2
         exit 1
     fi
     DIR="$HOME/{{ nix_config_dir }}"
@@ -77,13 +111,25 @@ setup-home-manager:
 update-home-manager:
     #!/usr/bin/env bash
     set -euo pipefail
+    if [[ -e "{{ nix_profile }}" ]]; then
+        set +u
+        . "{{ nix_profile }}"
+        set -u
+    fi
+    export PATH="$HOME/.nix-profile/bin:{{ nix_bin }}:$PATH"
     DIR="$HOME/{{ nix_config_dir }}"
     if [[ ! -d "$DIR/.git" ]]; then
         echo "$DIR not found. Run 'ujust setup-home-manager' first."
         exit 1
     fi
     git -C "$DIR" pull --ff-only
-    home-manager switch --flake "$DIR#$USER"
+    # home-manager installs itself into the user profile, which the system-wide
+    # nix-daemon.sh does not add to PATH in a non-login shell
+    if command -v home-manager >/dev/null 2>&1; then
+        home-manager switch --flake "$DIR#$USER"
+    else
+        nix run "home-manager/{{ hm_release }}" -- switch --flake "$DIR#$USER"
+    fi
 
 # Make zsh your login shell (the base image ships no chsh)
 set-default-shell:

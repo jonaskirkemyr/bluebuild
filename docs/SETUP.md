@@ -100,7 +100,8 @@ From then on, `cd` into the directory and `node` is 20; `cd` out and it's gone. 
 | Symptom | Fix |
 |---|---|
 | `home-manager switch` aborts: "would be clobbered" | it's refusing to overwrite an existing file — re-run with `-b bak` (the `ujust` recipe already does) |
-| `ujust setup-home-manager` says Nix not found | you didn't log out and back in after `setup-nix` |
+| `ujust setup-home-manager` says Nix not found | check `ls -l /nix/var/nix/profiles/default/bin/nix`. If it exists, Nix is installed and the recipe is at fault — update the image. If it doesn't, the installer never finished: re-run `ujust setup-nix` and read its output |
+| `nix: command not found` in your own shell, but the `ujust` recipes work | expected until you log out and back in. The installer only puts Nix on the PATH of *login* shells; the recipes source `/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh` themselves so they don't have to wait for that |
 | `nix: command not found` after a Fedora major upgrade | re-run `ujust setup-nix`; the installer sometimes needs to re-apply itself |
 | edits to `~/.zshrc` keep vanishing | expected — Home Manager owns that file now. Edit `home/home.nix` and switch |
 | new shell has no prompt/aliases | your login shell is still bash: `ujust set-default-shell` |
