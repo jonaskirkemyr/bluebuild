@@ -42,8 +42,45 @@ setup-nix:
         echo "missing install — the ujust recipes do not care either way."
         exit 0
     fi
+    # nix-installer's ostree planner refuses to run without these two, with
+    # "Unable to install on an SELinux system without common SELinux tooling".
+    # Checking first turns that into something you can act on.
+    for BIN in restorecon semodule; do
+        if ! command -v "$BIN" >/dev/null 2>&1; then
+            echo "Missing '$BIN', which the installer requires on an SELinux system." >&2
+            echo "Add policycoreutils to the dnf module in recipes/recipe.yml." >&2
+            exit 1
+        fi
+    done
+
+    # Download to a file rather than `curl | sh`. Piped, -f suppresses the HTTP
+    # error body and -s the progress meter, so a proxy or a TLS middlebox
+    # produces *no output at all* — just a bare non-zero exit from the recipe.
+    # This is also why the installer gets a real stdin below: piped into `sh -s`
+    # it has to prompt for confirmation on a stdin that is already at EOF.
+    TMP="$(mktemp -d)"
+    trap 'rm -rf "$TMP"' EXIT
+    echo "Fetching the Determinate Nix installer."
+    set +e
+    curl -fsSL --proto '=https' --tlsv1.2 -o "$TMP/install.sh" \
+        https://install.determinate.systems/nix
+    RC=$?
+    set -e
+    if [[ "$RC" -ne 0 ]]; then
+        echo >&2
+        echo "Could not download the installer: curl exit $RC." >&2
+        case "$RC" in
+            60) echo "That is a TLS certificate failure, usually a corporate proxy" >&2
+                echo "re-signing HTTPS. Install the CA it uses into" >&2
+                echo "/etc/pki/ca-trust/source/anchors/ and run 'sudo update-ca-trust'." >&2 ;;
+            6)  echo "That is a DNS failure — the hostname did not resolve." >&2 ;;
+            7|28) echo "That is a connection failure or timeout — check the network." >&2 ;;
+        esac
+        exit 1
+    fi
+
     echo "Installing Nix. You will be asked for your password."
-    curl -fsSL https://install.determinate.systems/nix | sh -s -- install
+    sh "$TMP/install.sh" install
     echo
     echo "Done. Next:"
     echo "    ujust setup-home-manager"
