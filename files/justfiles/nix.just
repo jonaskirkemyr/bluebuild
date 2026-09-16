@@ -79,8 +79,25 @@ setup-nix:
         exit 1
     fi
 
+    # `install ostree` — naming the planner instead of letting it be detected.
+    #
+    # nix-installer's auto-detection is a heuristic that has to succeed:
+    #
+    #     let is_ostree = Command::new("ostree").arg("remote").arg("list")
+    #         .output().is_ok_and(|output| output.status.success());
+    #     if is_ostree { ... } else { Linux planner }
+    #
+    # Anything that makes `ostree remote list` exit non-zero — the binary not on
+    # PATH, no remotes configured, a bootc-based image — falls through to the
+    # planner for *mutable* Linux, which does `mkdir /nix` on the read-only ostree
+    # root. That fails with EROFS, and because the rollback path then also tries to
+    # write /nix/receipt.json, the last thing on screen is a confusing
+    # "Error saving receipt: read-only filesystem".
+    #
+    # This image is always Fedora Atomic, so the planner is never in doubt. It
+    # creates /var/home/nix and bind-mounts it on /nix via a nix.mount unit.
     echo "Installing Nix. You will be asked for your password."
-    sh "$TMP/install.sh" install
+    sh "$TMP/install.sh" install ostree
     echo
     echo "Done. Next:"
     echo "    ujust setup-home-manager"
