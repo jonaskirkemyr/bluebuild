@@ -87,8 +87,11 @@ From then on, `cd` into the directory and `node` is 20; `cd` out and it's gone. 
 | other GUI apps (Firefox, IntelliJ) | `recipe.yml` (`default-flatpaks`) | updates independently of the image, doesn't bloat it |
 | CLI tools | `nix-config` (`home.packages`) | unless it needs a system path or GL, then `recipe.yml` |
 | fonts | `recipe.yml` (`fonts`) | fontconfig should serve them to Flatpaks too |
+| KDE panel layout, widgets (plasmoids), themes, shortcuts | `nix-config` (Home Manager + [plasma-manager](https://github.com/nix-community/plasma-manager)) | it's all `~/.config/plasma*` — per-user and changes often, so no rebuild and no reboot |
+| a KDE widget or theme that must exist for *all* users, or on the SDDM login screen | `recipe.yml` (`dnf`) | plasma-manager is per-user and explicitly won't touch the login screen (that needs root) |
 | Node 18 here, Node 24 there | `flake.nix` + `.envrc` in the project | the image has no per-directory concept; the recipe is global, always |
 | a systemd unit or `/etc` file | `files/system/` in this repo | |
+| system locale, keyboard layout, timezone | `recipe.yml` (`script` → [`system-defaults.sh`](../files/scripts/system-defaults.sh)) | otherwise `systemd-firstboot` asks for all three on the first boot of every fresh install |
 | your actual data, backed up | a real backup tool | nothing here backs up `/home` |
 
 ## When something goes wrong
@@ -103,5 +106,7 @@ From then on, `cd` into the directory and `node` is 20; `cd` out and it's gone. 
 | git says "please tell me who you are" | `~/.config/git/identity` is missing: `ujust set-git-identity <username>` |
 | `git commit` fails: "secret key not available" | the signing key in your identity file isn't in this keyring — `gpg --import` your backup, then re-run `set-git-identity` |
 | Flatpaks missing after a fresh install | `default-flatpaks` installs on first boot, not at build time; give it a few minutes |
+| first boot still asks for language/keyboard/timezone | the image is older than [`system-defaults.sh`](../files/scripts/system-defaults.sh), or one of `/etc/locale.conf`, `/etc/vconsole.conf`, `/etc/localtime` is missing — `systemd-firstboot` prompts for exactly the ones that aren't already set |
+| want a different locale/layout/timezone on new installs | edit the three variables at the top of [`system-defaults.sh`](../files/scripts/system-defaults.sh) and push. On a machine that's already installed, use System Settings or `localectl`/`timedatectl` — `/etc` is a 3-way merge, so your local value wins over the image's |
 | image update didn't take | `rpm-ostree status` — an update is *staged*, it applies on reboot |
 | a rolled-back image still has broken tools | the Nix store lives outside the image, so `rpm-ostree rollback` doesn't touch it; use `home-manager generations` |

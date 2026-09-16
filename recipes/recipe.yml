@@ -19,6 +19,12 @@ modules:
       - source: system
         destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
 
+  # locale, keymap and timezone, so systemd-firstboot has nothing left to ask on
+  # the first boot of a fresh install
+  - type: script
+    scripts:
+      - system-defaults.sh
+
   # only things that must be system-wide: the login shell, and GUI binaries that
   # need the system GL drivers or host toolchains. everything else is Home
   # Manager's job — see docs/SETUP.md
