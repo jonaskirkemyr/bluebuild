@@ -7,17 +7,24 @@ Commands, in order. For *why* the setup is split the way it is, see [GETTING_STA
 The image ships `ujust` recipes for all of this ([`files/justfiles/nix.just`](../files/justfiles/nix.just)), so there is nothing to copy-paste from a browser.
 
 ```bash
-ujust setup-nix                          # installs Nix; asks for your password
-# log out and back in
 ujust setup-home-manager                 # clones nix-config, applies shell/prompt/dotfiles
 ujust set-git-identity <username>        # name, email and signing key
 ujust set-default-shell                  # switches your login shell to zsh
 # log out and back in
 ```
 
-That's it. After the second login you have your zsh, starship prompt, aliases, git config, kitty config and CLI tools.
+That's it. After logging back in you have your zsh, starship prompt, aliases, git config, kitty config and CLI tools.
 
 Run `ujust` with no arguments to see every recipe the image provides.
+
+### There is no `setup-nix`
+
+Nix is part of the image, from Fedora's own `nix` and `nix-daemon` RPMs. Nothing to install, no installer to download on first boot, and `nix` is `/usr/bin/nix` so it's on `PATH` in every shell without logging out and back in. `ujust check-nix` reports whether it's healthy.
+
+The one piece that isn't obvious: `/nix` ships *inside* the image, and the image root is read-only ([composefs](https://github.com/containers/composefs)), so the store would be unwritable as shipped. A [`nix.mount`](../files/system/usr/lib/systemd/system/nix.mount) unit bind-mounts `/var/lib/nix` over it. Two consequences worth knowing:
+
+- **The store survives `rpm-ostree rollback`.** `/var` is outside the image. Rolling the system back doesn't roll your Nix packages back — use `home-manager generations` for that.
+- **`/var/lib/nix` is where the disk space goes.** `nix store gc` if it gets large.
 
 ### About `set-git-identity`
 
@@ -83,6 +90,7 @@ From then on, `cd` into the directory and `node` is 20; `cd` out and it's gone. 
 | Thing | Goes in | Why |
 |---|---|---|
 | login shell binary (`zsh`) | `recipe.yml` (`dnf`) | `/etc/passwd` needs a system path, and Home Manager's zsh module installs no package |
+| Nix itself, and the nix daemon | `recipe.yml` (`dnf`) | layer 2 can't bootstrap itself; and a shared store needs a system mount unit and system build users, which are not things a user config can create |
 | `.zshrc`, aliases, prompt, git config, `kitty.conf` | `nix-config` (Home Manager) | changes often; no rebuild, no reboot |
 | GUI apps that need GL or host toolchains (`kitty`, `code`) | `recipe.yml` (`dnf`) | must see the real drivers and the Nix store; a Flatpak sandbox can't |
 | other GUI apps (Firefox, IntelliJ) | `recipe.yml` (`default-flatpaks`) | updates independently of the image, doesn't bloat it |
@@ -100,10 +108,14 @@ From then on, `cd` into the directory and `node` is 20; `cd` out and it's gone. 
 | Symptom | Fix |
 |---|---|
 | `home-manager switch` aborts: "would be clobbered" | it's refusing to overwrite an existing file — re-run with `-b bak` (the `ujust` recipe already does) |
-| `setup-nix` fails with "Error saving receipt: read-only filesystem" | `/nix` is missing and cannot be created at runtime — the deployed root is composefs (`[sysroot] readonly = true`), so the installer's `chattr -i / && mkdir /nix` trick can't work. The image reserves the mountpoint in [`nix-mountpoint.sh`](../files/scripts/nix-mountpoint.sh); check with `ls -ld /nix`. If it's absent, your image predates that script — update and reboot. There is no runtime workaround |
-| `ujust setup-home-manager` says Nix not found | check `ls -l /nix/var/nix/profiles/default/bin/nix`. If it exists, Nix is installed and the recipe is at fault — update the image. If it doesn't, the installer never finished: re-run `ujust setup-nix` and read its output |
-| `nix: command not found` in your own shell, but the `ujust` recipes work | expected until you log out and back in. The installer only puts Nix on the PATH of *login* shells; the recipes source `/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh` themselves so they don't have to wait for that |
-| `nix: command not found` after a Fedora major upgrade | re-run `ujust setup-nix`; the installer sometimes needs to re-apply itself |
+| anything Nix-related | `ujust check-nix` first — it names which of the four parts (binary, store mount, daemon, home-manager) is missing |
+| `ujust setup-nix`: unknown recipe | it's gone; Nix is built into the image. See ["There is no `setup-nix`"](#there-is-no-setup-nix) |
+| `nix: command not found` | your image predates Nix being built in: `ujust update && systemctl reboot`. Unlike the old installer-based setup, logging out and back in is *not* part of the fix — `nix` is `/usr/bin/nix` |
+| nix fails to build or install anything, "read-only file system" | the store mount didn't come up, so `/nix` is still the read-only copy from the image. `systemctl status nix-store-dir.service nix.mount` — the first creates `/var/lib/nix`, the second binds it onto `/nix` |
+| `nix-daemon` won't start, or "cannot connect to socket" | it has `ConditionPathIsReadWrite=/nix/var/nix/daemon-socket`, so it *skips itself* when the store mount is missing rather than failing loudly. Fix the mount first, per the row above |
+| `warning: 'nix' is not owned by nixbld` / permission errors in the store | `ls -land /nix/store` should be `1775 0 <nixbld gid>`. It's created by [`nix-store.conf`](../files/system/usr/lib/tmpfiles.d/nix-store.conf); `sudo systemd-tmpfiles --create --prefix=/nix` re-applies it |
+| SELinux denials mentioning the store | store paths should be `default_t`, the same as on an ordinary Fedora install. Check with `ls -Zd /nix/store`; the equivalency that makes that work is set up by [`nix-store.sh`](../files/scripts/nix-store.sh) and lives in `/etc/selinux/targeted/contexts/files/file_contexts.subs` |
+| `/var` is filling up | that's the Nix store at `/var/lib/nix`. `nix store gc` |
 | edits to `~/.zshrc` keep vanishing | expected — Home Manager owns that file now. Edit `home/home.nix` and switch |
 | new shell has no prompt/aliases | your login shell is still bash: `ujust set-default-shell` |
 | git says "please tell me who you are" | `~/.config/git/identity` is missing: `ujust set-git-identity <username>` |

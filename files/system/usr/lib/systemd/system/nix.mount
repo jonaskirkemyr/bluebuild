@@ -1,0 +1,44 @@
+# Makes /nix writable.
+#
+# The `nix` RPMs ship /nix inside the image (nix-filesystem owns /nix and /nix/var,
+# nix-system owns /nix/store), and on Fedora Atomic the image root is genuinely
+# read-only: the base image's /usr/lib/ostree/prepare-root.conf sets
+#
+#     [composefs]
+#     enabled = yes
+#     [sysroot]
+#     readonly = true
+#
+# so the shipped directory can never be written to. This mounts writable storage
+# over it. Fedora's packaging is built for exactly this: nix-daemon.service carries
+# RequiresMountsFor=/nix/store, which is what pulls this unit in, and
+# ConditionPathIsReadWrite=/nix/var/nix/daemon-socket, so the daemon skips itself
+# rather than failing if the mount is missing.
+#
+# /var/lib because that is the FHS home for persistent system state, and because
+# /var is outside the image: `rpm-ostree rollback` never touches the store. (The
+# Determinate installer used /var/home/nix instead, which the SELinux policy labels
+# user_home_dir_t — see files/scripts/nix-store.sh for why the label matters.)
+#
+# Default dependencies give this the ordering it needs: systemd puts every local
+# mount unit After=local-fs-pre.target and Before=local-fs.target, which is early
+# enough that systemd-tmpfiles-setup.service (After=local-fs.target) populates
+# /nix/store and /nix/var/nix/* *inside* the mount.
+
+[Unit]
+Description=Writable Nix store on /var/lib/nix
+Documentation=file:///usr/share/doc/nix-core/README.fedora.md
+# a bind mount fails outright if the source is missing, and /var/lib/nix cannot be
+# shipped in the image: ostree only seeds /var at install time, so an existing
+# machine would never get it. nix-store-dir.service creates it on every boot.
+Requires=nix-store-dir.service
+After=nix-store-dir.service
+
+[Mount]
+What=/var/lib/nix
+Where=/nix
+Type=none
+Options=bind
+
+[Install]
+WantedBy=local-fs.target

@@ -13,114 +13,80 @@ hm_release := "release-25.11"
 # must match the `programs.git.includes` path in the nix-config repo
 identity_file := ".config/git/identity"
 
-# Where the Determinate installer puts Nix, regardless of what PATH says.
+# Nix itself is part of the image (the `nix` and `nix-daemon` RPMs in
+# recipes/recipe.yml), so there is no `setup-nix` here and nothing to install on a
+# fresh machine: `nix` is /usr/bin/nix and on PATH in every shell, login or not.
 #
-# This matters because `just` runs every recipe in a fresh *non-login,
-# non-interactive* bash. The installer only makes Nix visible to login shells:
-# it appends a line sourcing nix-daemon.sh to the shell profile files
-# (`/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh`, hardcoded as
-# PROFILE_NIX_FILE_SHELL in nix-installer). So `command -v nix` inside a recipe
-# reports nothing on a perfectly good install until the login shell has re-read
-# its profile — which is what "log out and back in" was working around.
-#
-# The recipes below source that file themselves instead, so they work the moment
-# `setup-nix` finishes and do not care how the terminal was started.
-nix_profile := "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
-nix_bin := "/nix/var/nix/profiles/default/bin"
+# What is *not* on PATH in a recipe is the per-user Nix profile, because `just` runs
+# every recipe in a fresh non-login, non-interactive bash and /etc/profile.d is only
+# read by login shells. home-manager installs itself into that profile, so the
+# recipes below source the file themselves rather than making you log out and back
+# in. It exports NIX_PROFILES, NIX_SSL_CERT_FILE, XDG_DATA_DIRS and the PATH entries
+# for ~/.nix-profile/bin and /nix/var/nix/profiles/default/bin.
+nix_env := "/etc/profile.d/nix-daemon.sh"
 
-# Install Nix (Determinate Systems installer: handles ostree and SELinux)
-setup-nix:
+# Check that the Nix the image ships is actually usable
+check-nix:
     #!/usr/bin/env bash
-    set -euo pipefail
-    # test the install location, not PATH. `command -v nix` here would miss an
-    # existing install and re-run the installer, which then aborts on its own
-    # pre-flight check — with the confusing result that installing "twice" leaves
-    # you no better off.
-    if [[ -x "{{ nix_bin }}/nix" ]]; then
-        echo "Nix is already installed: $("{{ nix_bin }}/nix" --version)"
-        echo "If 'nix' is not on your PATH, that is a shell-profile issue, not a"
-        echo "missing install — the ujust recipes do not care either way."
-        exit 0
-    fi
-    # nix-installer's ostree planner refuses to run without these two, with
-    # "Unable to install on an SELinux system without common SELinux tooling".
-    # Checking first turns that into something you can act on.
-    for BIN in restorecon semodule; do
-        if ! command -v "$BIN" >/dev/null 2>&1; then
-            echo "Missing '$BIN', which the installer requires on an SELinux system." >&2
-            echo "Add policycoreutils to the dnf module in recipes/recipe.yml." >&2
-            exit 1
-        fi
-    done
+    set -uo pipefail
+    RC=0
 
-    # Download to a file rather than `curl | sh`. Piped, -f suppresses the HTTP
-    # error body and -s the progress meter, so a proxy or a TLS middlebox
-    # produces *no output at all* — just a bare non-zero exit from the recipe.
-    # This is also why the installer gets a real stdin below: piped into `sh -s`
-    # it has to prompt for confirmation on a stdin that is already at EOF.
-    TMP="$(mktemp -d)"
-    trap 'rm -rf "$TMP"' EXIT
-    echo "Fetching the Determinate Nix installer."
-    set +e
-    curl -fsSL --proto '=https' --tlsv1.2 -o "$TMP/install.sh" \
-        https://install.determinate.systems/nix
-    RC=$?
-    set -e
-    if [[ "$RC" -ne 0 ]]; then
-        echo >&2
-        echo "Could not download the installer: curl exit $RC." >&2
-        case "$RC" in
-            60) echo "That is a TLS certificate failure, usually a corporate proxy" >&2
-                echo "re-signing HTTPS. Install the CA it uses into" >&2
-                echo "/etc/pki/ca-trust/source/anchors/ and run 'sudo update-ca-trust'." >&2 ;;
-            6)  echo "That is a DNS failure — the hostname did not resolve." >&2 ;;
-            7|28) echo "That is a connection failure or timeout — check the network." >&2 ;;
-        esac
-        exit 1
+    if command -v nix >/dev/null 2>&1; then
+        echo "nix:        $(nix --version) at $(command -v nix)"
+    else
+        echo "nix:        MISSING — this image predates Nix being built in." >&2
+        echo "            'ujust update && systemctl reboot', then try again." >&2
+        RC=1
     fi
 
-    # `install ostree` — naming the planner instead of letting it be detected.
-    #
-    # nix-installer's auto-detection is a heuristic that has to succeed:
-    #
-    #     let is_ostree = Command::new("ostree").arg("remote").arg("list")
-    #         .output().is_ok_and(|output| output.status.success());
-    #     if is_ostree { ... } else { Linux planner }
-    #
-    # Anything that makes `ostree remote list` exit non-zero — the binary not on
-    # PATH, no remotes configured, a bootc-based image — falls through to the
-    # planner for *mutable* Linux, which does `mkdir /nix` on the read-only ostree
-    # root. That fails with EROFS, and because the rollback path then also tries to
-    # write /nix/receipt.json, the last thing on screen is a confusing
-    # "Error saving receipt: read-only filesystem".
-    #
-    # This image is always Fedora Atomic, so the planner is never in doubt. It
-    # creates /var/home/nix and bind-mounts it on /nix via a nix.mount unit.
-    echo "Installing Nix. You will be asked for your password."
-    sh "$TMP/install.sh" install ostree
-    echo
-    echo "Done. Next:"
-    echo "    ujust setup-home-manager"
-    echo
-    echo "Log out and back in as well, so 'nix' is on your own PATH interactively."
+    # The store has to live on a writable filesystem. /nix ships inside the image,
+    # whose root is read-only under composefs, so nix.mount binds /var/lib/nix over
+    # it. Without that mount nix can read but never build.
+    if MNT="$(findmnt --noheadings --output SOURCE,TARGET /nix 2>/dev/null)"; then
+        echo "store:      writable, mounted from ${MNT}"
+    else
+        echo "store:      NOT MOUNTED — /nix is still the read-only copy from the" >&2
+        echo "            image, so nothing can be built or installed. Look at:" >&2
+        echo "              systemctl status nix-store-dir.service nix.mount" >&2
+        RC=1
+    fi
+
+    # Multi-user mode: builds are handed to the daemon and run as nixbld-*.
+    if systemctl is-active --quiet nix-daemon.socket; then
+        echo "daemon:     nix-daemon.socket active"
+    else
+        echo "daemon:     nix-daemon.socket NOT active." >&2
+        echo "            It has ConditionPathIsReadWrite=/nix/var/nix/daemon-socket," >&2
+        echo "            so it skips itself when the store mount is missing — fix" >&2
+        echo "            that first. Otherwise: systemctl status nix-daemon.socket" >&2
+        RC=1
+    fi
+
+    if command -v home-manager >/dev/null 2>&1; then
+        echo "home-mgr:   $(command -v home-manager)"
+    else
+        echo "home-mgr:   not installed yet — run 'ujust setup-home-manager'"
+    fi
+
+    if [[ "$RC" -eq 0 ]]; then
+        echo
+        echo "All good. 'nix run nixpkgs#hello' is a quick end-to-end test."
+    fi
+    exit "$RC"
 
 # Clone the Home Manager config and apply it (first run on a new machine)
 setup-home-manager:
     #!/usr/bin/env bash
     set -euo pipefail
     # nix-daemon.sh reads variables it has not set, so -u has to come off for it
-    if [[ -e "{{ nix_profile }}" ]]; then
+    if [[ -e "{{ nix_env }}" ]]; then
         set +u
-        . "{{ nix_profile }}"
+        . "{{ nix_env }}"
         set -u
     fi
-    export PATH="$HOME/.nix-profile/bin:{{ nix_bin }}:$PATH"
     if ! command -v nix >/dev/null 2>&1; then
-        echo "Nix not found at {{ nix_bin }}/nix. Run 'ujust setup-nix' first." >&2
-        echo >&2
-        echo "If you have already run it, check what the installer left behind:" >&2
-        echo "    ls -l {{ nix_bin }}/nix" >&2
-        echo "    systemctl status nix.mount nix-daemon.socket" >&2
+        echo "Nix not found, which should not be possible — it is part of the image." >&2
+        echo "Run 'ujust check-nix' to see which part is missing." >&2
         exit 1
     fi
     DIR="$HOME/{{ nix_config_dir }}"
@@ -165,20 +131,19 @@ setup-home-manager:
 update-home-manager:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ -e "{{ nix_profile }}" ]]; then
+    if [[ -e "{{ nix_env }}" ]]; then
         set +u
-        . "{{ nix_profile }}"
+        . "{{ nix_env }}"
         set -u
     fi
-    export PATH="$HOME/.nix-profile/bin:{{ nix_bin }}:$PATH"
     DIR="$HOME/{{ nix_config_dir }}"
     if [[ ! -d "$DIR/.git" ]]; then
         echo "$DIR not found. Run 'ujust setup-home-manager' first."
         exit 1
     fi
     git -C "$DIR" pull --ff-only
-    # home-manager installs itself into the user profile, which the system-wide
-    # nix-daemon.sh does not add to PATH in a non-login shell
+    # falls back to a one-shot `nix run` if home-manager is not in the user profile
+    # yet — which is the case on the very first switch, before it installs itself
     if command -v home-manager >/dev/null 2>&1; then
         home-manager switch --flake "$DIR#$USER"
     else

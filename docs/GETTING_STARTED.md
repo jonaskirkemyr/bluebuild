@@ -57,7 +57,7 @@ This repo is **the system, and only the system**. Coming from Nix, where one con
 
 Layers 2 and 3 cannot be done here, and pushing them in anyway is the main way people get frustrated with this model. An image is one image for the whole machine; there is no per-user or per-directory concept anywhere in it. Anything in `recipe.yml` is installed globally and present in every shell, always.
 
-The image does, however, **bootstrap** layers 2 and 3 for you: `ujust setup-nix` and `ujust setup-home-manager` are baked in. See [SETUP.md](SETUP.md) for the exact commands, and its bottom table for deciding which layer a given thing belongs to.
+The image does, however, **bootstrap** layers 2 and 3 for you. Nix itself is layer 1 — it's installed from Fedora's RPMs in `recipe.yml`, because layer 2 cannot install the thing that runs layer 2 — and `ujust setup-home-manager` is baked in to do the rest. See [SETUP.md](SETUP.md) for the exact commands, and its bottom table for deciding which layer a given thing belongs to.
 
 ## What's in this repo
 
@@ -151,7 +151,7 @@ podman run --rm -v "$PWD/files/justfiles":/w:Z fedora:44 \
   bash -c 'dnf -yq install just && just --justfile /w/nix.just --fmt --check --unstable'
 ```
 
-[`files/justfiles/nix.just`](../files/justfiles/nix.just) is the real example: it's what makes `ujust setup-nix` and `ujust setup-home-manager` work.
+[`files/justfiles/nix.just`](../files/justfiles/nix.just) is the real example: it's what makes `ujust setup-home-manager` and `ujust check-nix` work.
 
 ### Ship a config file
 
@@ -302,7 +302,7 @@ systemctl reboot                  # apply a staged update
 rpm-ostree rollback               # go back to the previous image
 rpm -q <package>                  # is this package in my image?
 ujust                             # list every shortcut, mine and Universal Blue's
-ujust setup-nix                   # install Nix (once per machine)
+ujust check-nix                   # is the image's Nix healthy? (store mount, daemon)
 ujust setup-home-manager          # clone + apply the nix-config repo (once)
 ujust update-home-manager         # pull + re-apply it (day to day)
 ujust set-git-identity <username> # write ~/.config/git/identity from GitHub

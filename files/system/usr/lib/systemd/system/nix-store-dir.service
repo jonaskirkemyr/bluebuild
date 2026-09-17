@@ -1,0 +1,36 @@
+# Creates the directory nix.mount binds onto /nix.
+#
+# This exists because of an ordering problem rather than any real complexity:
+#
+#   - a bind mount fails if its source does not exist, so /var/lib/nix has to be
+#     there before nix.mount runs;
+#   - shipping /var/lib/nix in the image does not work, because ostree only seeds
+#     /var when the machine is first installed — an existing machine would upgrade
+#     into an image whose nix.mount can never start;
+#   - systemd-tmpfiles-setup.service, the usual way to create a directory, runs
+#     After=local-fs.target, i.e. *after* mount units.
+#
+# So: a plain oneshot, ordered before the mount. DefaultDependencies=no because the
+# default set starts After=basic.target, far too late to be of use to a mount unit.
+# There is no [Install] section — nix.mount pulls this in with Requires=, which also
+# covers the case where nix-daemon.service activates the mount on its own via
+# RequiresMountsFor=/nix/store.
+
+[Unit]
+Description=Create the Nix store directory on /var
+DefaultDependencies=no
+RequiresMountsFor=/var/lib
+After=local-fs-pre.target
+Before=nix.mount local-fs.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/install -d -m 0755 -o root -g root /var/lib/nix
+# Label it as if it were /nix itself, which the fcontext equivalency set up by
+# files/scripts/nix-store.sh makes restorecon do. A freshly created directory would
+# otherwise inherit var_lib_t from its parent, and every store path created under it
+# would inherit that in turn. Prefixed with '-' so a machine running with SELinux
+# disabled still gets the directory.
+ExecStart=-/usr/sbin/restorecon -F /var/lib/nix

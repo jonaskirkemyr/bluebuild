@@ -24,10 +24,6 @@ modules:
   - type: script
     scripts:
       - system-defaults.sh
-      # /nix mountpoint. must be baked in: the deployed root is composefs, so it
-      # cannot be created on a running machine and `ujust setup-nix` fails with
-      # EROFS without it
-      - nix-mountpoint.sh
 
   # only things that must be system-wide: the login shell, and GUI binaries that
   # need the system GL drivers or host toolchains. everything else is Home
@@ -44,6 +40,33 @@ modules:
         - zsh # login shell must be a system path. ublue removes /usr/bin/chsh — use `ujust set-default-shell`
         - kitty # from the RPM so it gets the system GL drivers (this is what nixGL worked around)
         - code # VS Code. RPM, not flatpak: the sandbox can't see the nix store or direnv
+        # Nix, from Fedora rather than the Determinate installer. This is layer 2's
+        # foundation (Home Manager, per-project dev shells) so a fresh machine has
+        # to have it before it can do anything, and downloading an installer over
+        # the network on first boot is the fragile way to get there. The RPMs are
+        # also already set up for an atomic host: nix is /usr/bin/nix so it is on
+        # PATH everywhere, nix-daemon.service expects /nix to be a separate mount,
+        # /etc/nix/nix.conf enables flakes and points ssl-cert-file at the system CA
+        # bundle (so a TLS-inspecting corporate proxy works), and nix-system creates
+        # the nixbld build users. See docs/SETUP.md.
+        - nix
+        - nix-daemon # multi-user mode; the store is shared, builds run as nixbld-*
+
+  # /nix comes from the RPM but the image root is read-only, so the store needs a
+  # writable filesystem over it. nix-store.sh has the SELinux half of that, the two
+  # units under files/system/ have the rest.
+  - type: script
+    scripts:
+      - nix-store.sh
+
+  - type: systemd
+    system:
+      enabled:
+        # bind-mounts /var/lib/nix onto /nix. pulls in nix-store-dir.service itself,
+        # which is why that one is not listed here
+        - nix.mount
+        - nix-daemon.socket
+        - nix-daemon.service # shipped disabled; README.fedora.md says to enable it
 
   # nerd font installed system-wide so fontconfig serves it to non-Nix apps too
   - type: fonts
