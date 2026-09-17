@@ -51,14 +51,29 @@ check-nix:
         RC=1
     fi
 
-    # Multi-user mode: builds are handed to the daemon and run as nixbld-*.
-    if systemctl is-active --quiet nix-daemon.socket; then
-        echo "daemon:     nix-daemon.socket active"
+    # Multi-user mode: builds are handed to the daemon and run as nixbld-*. There is
+    # deliberately no socket activation — see the systemd module in recipe.yml — so
+    # nix-daemon.service is the unit to look at, and it creates the socket itself.
+    STATE="$(systemctl is-active nix-daemon.service 2>/dev/null || true)"
+    if [[ "$STATE" == "active" ]]; then
+        echo "daemon:     nix-daemon.service active"
     else
-        echo "daemon:     nix-daemon.socket NOT active." >&2
-        echo "            It has ConditionPathIsReadWrite=/nix/var/nix/daemon-socket," >&2
-        echo "            so it skips itself when the store mount is missing — fix" >&2
-        echo "            that first. Otherwise: systemctl status nix-daemon.socket" >&2
+        # Don't guess at the cause here: 'inactive' means a Condition skipped it,
+        # 'failed' means it tried and could not. Those need different fixes, and
+        # only the journal knows which happened.
+        echo "daemon:     nix-daemon.service is '${STATE:-unknown}', not active." >&2
+        echo "            systemctl status nix-daemon.service" >&2
+        echo "            journalctl -b -u nix-daemon.service" >&2
+        RC=1
+    fi
+
+    # The one check that exercises the whole stack rather than inspecting it: this
+    # opens the daemon socket and asks the store to identify itself.
+    if INFO="$(nix store info 2>&1)"; then
+        echo "store ping: $(echo "$INFO" | tr '\n' ' ')"
+    else
+        echo "store ping: FAILED — nix cannot talk to the store." >&2
+        echo "$INFO" | sed 's/^/            /' >&2
         RC=1
     fi
 

@@ -65,8 +65,25 @@ modules:
         # bind-mounts /var/lib/nix onto /nix. pulls in nix-store-dir.service itself,
         # which is why that one is not listed here
         - nix.mount
-        - nix-daemon.socket
         - nix-daemon.service # shipped disabled; README.fedora.md says to enable it
+      disabled:
+        # NOT socket activation, deliberately. With a .socket unit, systemd creates
+        # the listening socket itself, as init_t, and the targeted policy has no
+        # `allow init_t default_t:sock_file create` — /nix/var/nix/daemon-socket is
+        # default_t, because the policy has no rule for /nix at all and it falls
+        # through to the `/.*` catch-all. The result is
+        # "Failed to create listening socket: Permission denied".
+        #
+        # nix-daemon.service on its own has no such problem: /usr/bin/nix-daemon is
+        # bin_t, so `type_transition init_t bin_t:process unconfined_service_t`
+        # applies, and unconfined_service_t is a files_unconfined_type — it may
+        # create a sock_file in any file_type, default_t included. nix-daemon in
+        # --daemon mode binds the socket itself when it is not handed one, which is
+        # how it works on distros without systemd, so nothing is lost but lazy start.
+        #
+        # This is also what /usr/share/doc/nix-core/README.fedora.md tells you to do:
+        # `systemctl enable --now nix-daemon`, with no mention of the socket.
+        - nix-daemon.socket
 
   # nerd font installed system-wide so fontconfig serves it to non-Nix apps too
   - type: fonts
