@@ -24,6 +24,10 @@ modules:
   - type: script
     scripts:
       - system-defaults.sh
+      # /nix mountpoint. must be baked in: the deployed root is composefs, so it
+      # cannot be created on a running machine and `ujust setup-nix` fails with
+      # EROFS without it
+      - nix-mountpoint.sh
 
   # only things that must be system-wide: the login shell, and GUI binaries that
   # need the system GL drivers or host toolchains. everything else is Home
