@@ -1,6 +1,7 @@
-# Recipes for the Nix half of this workstation: the Home Manager config that
-# owns your shell, prompt and dotfiles, and the Nix that per-project dev shells
-# need. Run `ujust` with no arguments to list every recipe.
+# Recipes for the Nix half of this workstation: the Home Manager config that owns
+# your shell, prompt and dotfiles, the Nix that per-project dev shells need, and
+# `create-flake` for starting one of those dev shells. Run `ujust` with no
+# arguments to list every recipe.
 #
 # These are baked into the image by the `justfiles` module in recipes/recipe.yml,
 # so a freshly-installed machine has them available immediately.
@@ -164,6 +165,103 @@ update-home-manager:
     else
         nix run "home-manager/{{ hm_release }}" -- switch --flake "$DIR#$USER"
     fi
+
+# Start a per-project dev shell: copies a flake.nix + .envrc into this directory
+create-flake language="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -e "{{ nix_env }}" ]]; then
+        set +u
+        . "{{ nix_env }}"
+        set -u
+    fi
+
+    # ujust sets JUST_JUSTFILE and nothing else, and just with --justfile (and no
+    # --working-directory) runs recipes from the *justfile's* directory — so $PWD
+    # here is /usr/share/ublue-os, not where you typed the command. This just
+    # version does not export INVOCATION_DIRECTORY either. invocation_directory()
+    # is the one thing that does know, so it is what the recipe has to use.
+    TARGET="{{ invocation_directory() }}"
+    cd "$TARGET"
+
+    DIR="$HOME/{{ nix_config_dir }}"
+    if [[ ! -d "$DIR/.git" ]]; then
+        echo "$DIR not found, and that is where the templates live." >&2
+        echo "Run 'ujust setup-home-manager' first." >&2
+        exit 1
+    fi
+
+    # The flake is the list of templates; nothing is duplicated here. Note nix
+    # only sees *committed* files in a git checkout, so a template you are still
+    # editing in $DIR has to be committed before it shows up.
+    list_templates() {
+        echo "Available:"
+        nix eval --raw "$DIR#templates" --apply \
+            'ts: builtins.concatStringsSep "\n" (builtins.attrValues (builtins.mapAttrs (n: t: n + "\t" + t.description) ts)) + "\n"' |
+            while IFS=$'\t' read -r N D; do printf "  %-10s %s\n" "$N" "$D"; done
+    }
+
+    IN="{{ language }}"
+    if [[ -z "$IN" ]]; then
+        echo "Usage: ujust create-flake <language>"
+        echo
+        list_templates
+        exit 1
+    fi
+
+    # Nicknames only. Anything else is passed through as a template name, so a new
+    # template added to the flake works here without touching this recipe.
+    case "${IN,,}" in
+        "c#" | cs | csharp | dotnet | .net) NAME=csharp ;;
+        java | jvm) NAME=java ;;
+        kt | kotlin) NAME=kotlin ;;
+        js | ts | node | nodejs | typescript) NAME=nodejs ;;
+        *) NAME="${IN,,}" ;;
+    esac
+
+    if ! nix eval --raw "$DIR#templates.$NAME.description" >/dev/null 2>&1; then
+        echo "No template called '$NAME'." >&2
+        echo >&2
+        list_templates >&2
+        exit 1
+    fi
+
+    # nix flake init refuses to overwrite, but it does so one file at a time and
+    # after having copied the others. Check the file that matters up front instead.
+    if [[ -e flake.nix ]]; then
+        echo "There is already a flake.nix in $TARGET. Nothing done." >&2
+        echo "Move it aside if you really want to start over." >&2
+        exit 1
+    fi
+
+    echo "Creating a '$NAME' dev shell in $TARGET"
+    nix flake init -t "$DIR#$NAME"
+
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        # Nix ignores untracked files in a git repository, so an un-added
+        # flake.nix fails to evaluate with a confusing "does not exist".
+        git add flake.nix .envrc
+        echo "Staged flake.nix and .envrc (nix ignores untracked files)."
+        if ! grep -qs '^\.direnv/\?$' .gitignore; then
+            echo ".direnv/" >>.gitignore
+            echo "Added .direnv/ to .gitignore (direnv's cache; not yours to commit)."
+        fi
+    fi
+
+    if command -v direnv >/dev/null 2>&1; then
+        direnv allow
+        echo "direnv allowed — the shell activates next time you cd in here."
+    else
+        echo "direnv is not installed (it comes from the Home Manager config)," >&2
+        echo "so use 'nix develop' to enter the shell by hand." >&2
+    fi
+
+    echo
+    echo "Next:"
+    echo "    edit flake.nix     # the package list is the point of the file"
+    echo "    press enter        # direnv loads the shell on the next prompt. The"
+    echo "                       # first load builds the toolchain, so it is slow once"
+    echo "    nix flake update   # later, to move the pinned versions forward"
 
 # Make zsh your login shell (the base image ships no chsh)
 set-default-shell:

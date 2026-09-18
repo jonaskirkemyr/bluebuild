@@ -91,8 +91,8 @@ modules:
       nerd-fonts:
         - Inconsolata # no spaces, no "Nerd Font" suffix
 
-  # bakes `ujust setup-nix` / `setup-home-manager` etc. into the image, so a
-  # fresh install can pull down the Home Manager config in two commands
+  # bakes `ujust setup-home-manager` / `check-nix` / `create-flake` etc. into the
+  # image, so a fresh install can pull down the Home Manager config in one command
   - type: justfiles
     validate: true
 

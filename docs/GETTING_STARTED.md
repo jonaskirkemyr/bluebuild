@@ -39,7 +39,7 @@ Coming from Nix, the mental model maps closely: the recipe is your `configuratio
 | `nixos-rebuild switch` builds locally | GitHub builds for you; your PC only downloads |
 | Generations, rollback via bootloader | Image deployments, rollback via `rpm-ostree rollback` |
 | Per-user declarative home config | Still Home Manager's job, in a separate repo — see below |
-| Per-directory `flake.nix` dev shells | Still flakes' job, in each project — see below |
+| Per-directory `flake.nix` dev shells | Still flakes' job, in each project — `ujust create-flake <language>` writes the starter, see below |
 | Fine-grained pinning of everything | You pin the base image; package versions come from Fedora repos |
 
 That last row is the biggest adjustment. This setup is declarative about *what is installed*, not about *exact versions of everything*. Two builds of the same recipe a week apart will differ.
@@ -151,7 +151,9 @@ podman run --rm -v "$PWD/files/justfiles":/w:Z fedora:44 \
   bash -c 'dnf -yq install just && just --justfile /w/nix.just --fmt --check --unstable'
 ```
 
-[`files/justfiles/nix.just`](../files/justfiles/nix.just) is the real example: it's what makes `ujust setup-home-manager` and `ujust check-nix` work.
+[`files/justfiles/nix.just`](../files/justfiles/nix.just) is the real example: it's what makes `ujust setup-home-manager`, `ujust check-nix` and `ujust create-flake` work.
+
+One trap worth knowing before writing a recipe that touches files: `ujust` only sets `JUST_JUSTFILE`, and `just` given a justfile but no `--working-directory` runs recipes from *the justfile's* directory. So `$PWD` in a recipe is `/usr/share/ublue-os`, not where the user typed the command, and this `just` doesn't export `INVOCATION_DIRECTORY` either. Use `{{ invocation_directory() }}` — that's what `create-flake` does.
 
 ### Ship a config file
 
@@ -305,6 +307,7 @@ ujust                             # list every shortcut, mine and Universal Blue
 ujust check-nix                   # is the image's Nix healthy? (store mount, daemon)
 ujust setup-home-manager          # clone + apply the nix-config repo (once)
 ujust update-home-manager         # pull + re-apply it (day to day)
+ujust create-flake <language>     # drop a dev shell into this project (csharp/java/kotlin/nodejs)
 ujust set-git-identity <username> # write ~/.config/git/identity from GitHub
 ujust set-default-shell           # switch login shell to zsh
 

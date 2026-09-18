@@ -48,40 +48,30 @@ ujust set-git-identity <username>         # re-run; signing now turns on
 | change my git name/email/signing key | `ujust set-git-identity <username>` |
 | undo a bad Home Manager change | `home-manager generations`, then run the `activate` path of an older one |
 | undo a bad image update | `rpm-ostree rollback && systemctl reboot` |
-| give one project its own toolchain | see below |
+| give one project its own toolchain | `ujust create-flake <language>` in the project directory — see below |
 | know whether something belongs in the image or in Nix | see the table at the bottom |
 
 ## Give a project its own toolchain
 
-Two files in the project directory, then one command. Nothing global changes.
+One command, in the project directory. Nothing global changes.
+
+```bash
+ujust create-flake nodejs        # also: csharp, java, kotlin. No argument lists them
+```
+
+That copies a `flake.nix` and a `.envrc` into the current directory, stages both (Nix ignores untracked files in a git repo, which otherwise fails confusingly), adds `.direnv/` to `.gitignore`, and runs `direnv allow`. Press enter and you are in the shell. The first entry builds the toolchain so it takes a while; after that it is instant.
+
+The templates are starting points — the package list is the whole point of the file:
 
 ```nix
-# flake.nix
-{
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-
-  outputs = { nixpkgs, ... }:
-    let pkgs = nixpkgs.legacyPackages.x86_64-linux;
-    in {
-      devShells.x86_64-linux.default = pkgs.mkShell {
-        packages = [ pkgs.nodejs_20 ];
-      };
-    };
-}
+packages = with pkgs; [ nodejs_22 pnpm ];
 ```
 
-```bash
-# .envrc
-use flake
-```
+`node` is 22 inside the directory and gone outside it. A sibling project pinning `nodejs_24` gets 24. Same for `jdk21`, `python312`, `dotnet-sdk_10` and the rest — search names at [search.nixos.org/packages](https://search.nixos.org/packages). `nix flake update` in the project moves the pinned versions forward when you want them moved.
 
-```bash
-direnv allow    # once per project
-```
+**The templates live in the `nix-config` repo**, not in this one, in [`templates/`](https://github.com/jonaskirkemyr/nix-config/tree/main/templates). A template is something you tweak the week after writing it, and a change here costs a CI build, an `ujust update` and a reboot, while a change there costs a `git pull`. The recipe is a thin wrapper around `nix flake init -t ~/nix-config#<language>`, which is a plain Nix feature and works on any machine — the recipe exists so the thing is discoverable in `ujust` and so the staging, `.gitignore` and `direnv allow` steps aren't yours to remember.
 
-From then on, `cd` into the directory and `node` is 20; `cd` out and it's gone. A sibling project pinning `pkgs.nodejs_18` gets 18. Same for `pkgs.jdk21`, `pkgs.python312`, `pkgs.dotnet-sdk_9`, and so on — search names at [search.nixos.org/packages](https://search.nixos.org/packages).
-
-`direnv` and `nix-direnv` (which caches the shells so activation is instant after the first build) come from your Home Manager config, so this works with no extra setup.
+`direnv` and `nix-direnv` (which caches the shells and keeps a gcroot, so `nix store gc` doesn't undo the first build) come from your Home Manager config, so all of this works with no extra setup.
 
 **VS Code:** launch it as `code .` from a terminal that's already inside the directory, so it inherits the dev shell. If you launch it from the KDE menu instead, install the [direnv extension](https://marketplace.visualstudio.com/items?itemName=mkhl.direnv) so it picks the environment up itself.
 
@@ -99,6 +89,7 @@ From then on, `cd` into the directory and `node` is 20; `cd` out and it's gone. 
 | KDE panel layout, widgets (plasmoids), themes, shortcuts | `nix-config` (Home Manager + [plasma-manager](https://github.com/nix-community/plasma-manager)) | it's all `~/.config/plasma*` — per-user and changes often, so no rebuild and no reboot |
 | a KDE widget or theme that must exist for *all* users, or on the SDDM login screen | `recipe.yml` (`dnf`) | plasma-manager is per-user and explicitly won't touch the login screen (that needs root) |
 | Node 18 here, Node 24 there | `flake.nix` + `.envrc` in the project | the image has no per-directory concept; the recipe is global, always |
+| the starting point for one of those `flake.nix` files | `nix-config` (`templates/`) | `ujust create-flake` is a wrapper around `nix flake init -t`; the templates change often, and a change in the image costs a build and a reboot |
 | a systemd unit or `/etc` file | `files/system/` in this repo | |
 | system locale, keyboard layout, timezone | `recipe.yml` (`script` → [`system-defaults.sh`](../files/scripts/system-defaults.sh)) | otherwise `systemd-firstboot` asks for all three on the first boot of every fresh install |
 | your actual data, backed up | a real backup tool | nothing here backs up `/home` |
@@ -115,6 +106,9 @@ From then on, `cd` into the directory and `node` is 20; `cd` out and it's gone. 
 | `nix-daemon` won't start, or "cannot connect to socket" | `systemctl is-active nix-daemon.service` — `inactive` means a `Condition` skipped it (usually the store mount, per the row above), `failed` means it tried and couldn't. `journalctl -b -u nix-daemon.service` says which. Note there is deliberately no `nix-daemon.socket`: with socket activation systemd creates the socket as `init_t`, which the policy won't let it do in a `default_t` directory ("Failed to create listening socket: Permission denied"). The daemon creates its own |
 | `warning: 'nix' is not owned by nixbld` / permission errors in the store | `ls -land /nix/store` should be `1775 0 <nixbld gid>`. It's created by [`nix-store.conf`](../files/system/usr/lib/tmpfiles.d/nix-store.conf); `sudo systemd-tmpfiles --create --prefix=/nix` re-applies it |
 | SELinux denials mentioning the store | store paths should be `default_t`, the same as on an ordinary Fedora install. Check with `ls -Zd /nix/store`; the equivalency that makes that work is set up by [`nix-store.sh`](../files/scripts/nix-store.sh) and lives in `/etc/selinux/targeted/contexts/files/file_contexts.subs` |
+| `ujust create-flake`: "`~/nix-config` not found" | the templates live in that repo: `ujust setup-home-manager` first |
+| a template you just edited in `~/nix-config` isn't what `create-flake` writes | Nix only sees *committed* files in a git checkout, so commit it (or `git add` it) and re-run |
+| a project's dev shell doesn't activate on `cd` | `direnv allow` in the directory, and check `.envrc` exists. `direnv status` says which RC file it found and whether it's allowed |
 | `/var` is filling up | that's the Nix store at `/var/lib/nix`. `nix store gc` |
 | edits to `~/.zshrc` keep vanishing | expected — Home Manager owns that file now. Edit `home/home.nix` and switch |
 | new shell has no prompt/aliases | your login shell is still bash: `ujust set-default-shell` |
