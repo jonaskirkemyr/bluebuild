@@ -91,6 +91,7 @@ packages = with pkgs; [ nodejs_22 pnpm ];
 | Node 18 here, Node 24 there | `flake.nix` + `.envrc` in the project | the image has no per-directory concept; the recipe is global, always |
 | the starting point for one of those `flake.nix` files | `nix-config` (`templates/`) | `ujust create-flake` is a wrapper around `nix flake init -t`; the templates change often, and a change in the image costs a build and a reboot |
 | a systemd unit or `/etc` file | `files/system/` in this repo | |
+| a kernel tunable (`sysctl`), e.g. the inotify limits | `files/system/usr/lib/sysctl.d/` in this repo | per-machine, needs root, and `/usr/lib` leaves `/etc/sysctl.d` free as your local override |
 | system locale, keyboard layout, timezone | `recipe.yml` (`script` → [`system-defaults.sh`](../files/scripts/system-defaults.sh)) | otherwise `systemd-firstboot` asks for all three on the first boot of every fresh install |
 | your actual data, backed up | a real backup tool | nothing here backs up `/home` |
 
@@ -106,6 +107,8 @@ packages = with pkgs; [ nodejs_22 pnpm ];
 | `nix-daemon` won't start, or "cannot connect to socket" | `systemctl is-active nix-daemon.service` — `inactive` means a `Condition` skipped it (usually the store mount, per the row above), `failed` means it tried and couldn't. `journalctl -b -u nix-daemon.service` says which. Note there is deliberately no `nix-daemon.socket`: with socket activation systemd creates the socket as `init_t`, which the policy won't let it do in a `default_t` directory ("Failed to create listening socket: Permission denied"). The daemon creates its own |
 | `warning: 'nix' is not owned by nixbld` / permission errors in the store | `ls -land /nix/store` should be `1775 0 <nixbld gid>`. It's created by [`nix-store.conf`](../files/system/usr/lib/tmpfiles.d/nix-store.conf); `sudo systemd-tmpfiles --create --prefix=/nix` re-applies it |
 | SELinux denials mentioning the store | store paths should be `default_t`, the same as on an ordinary Fedora install. Check with `ls -Zd /nix/store`; the equivalency that makes that work is set up by [`nix-store.sh`](../files/scripts/nix-store.sh) and lives in `/etc/selinux/targeted/contexts/files/file_contexts.subs` |
+| the KDE panel, widgets or wallpaper from `nix-config` never appear, but the terminal/locale keys did | plasma-manager applies those with `qdbus`, which Fedora only ships as `qdbus-qt6`, so the login scripts die with "command not found" — silently, and they retry forever. [`qdbus-compat.sh`](../files/scripts/qdbus-compat.sh) links it. If `command -v qdbus` is empty, your image predates that: `ujust update && systemctl reboot`. To see it for yourself, run `~/.local/share/plasma-manager/run_all.sh` by hand |
+| "Inotify Watch Capacity Low" notification | see [below](#when-inotify-runs-out-of-watches) |
 | `ujust create-flake`: "`~/nix-config` not found" | the templates live in that repo: `ujust setup-home-manager` first |
 | a template you just edited in `~/nix-config` isn't what `create-flake` writes | Nix only sees *committed* files in a git checkout, so commit it (or `git add` it) and re-run |
 | a project's dev shell doesn't activate on `cd` | `direnv allow` in the directory, and check `.envrc` exists. `direnv status` says which RC file it found and whether it's allowed |
@@ -119,3 +122,26 @@ packages = with pkgs; [ nodejs_22 pnpm ];
 | want a different locale/layout/timezone on new installs | edit the three variables at the top of [`system-defaults.sh`](../files/scripts/system-defaults.sh) and push. On a machine that's already installed, use System Settings or `localectl`/`timedatectl` — `/etc` is a 3-way merge, so your local value wins over the image's |
 | image update didn't take | `rpm-ostree status` — an update is *staged*, it applies on reboot |
 | a rolled-back image still has broken tools | the Nix store lives outside the image, so `rpm-ostree rollback` doesn't touch it; use `home-manager generations` |
+
+## When inotify runs out of watches
+
+KDE's `kde-inotify-survey` watches the watchers and notifies you as either limit nears exhaustion: *"Inotify Watch Capacity Low"*, or *"Inotify Instance Capacity Low"* for the other one. Both limits are **per user, across every process**, which is why one greedy program starves the rest of the desktop — a file manager stops noticing new files, a language server stops reloading, `home-manager switch` looks fine and the editor doesn't.
+
+What they are set to:
+
+```bash
+sysctl fs.inotify.max_user_watches fs.inotify.max_user_instances
+```
+
+The image raises those in [`90-inotify.conf`](../files/system/usr/lib/sysctl.d/90-inotify.conf) (524288 watches, 1024 instances). Without it you get the kernel defaults: 128 instances, and a watch limit derived from RAM — 1% of memory at ~1 KB per watch, clamped to `[8192, 1048576]` — so it is not a number to assume, only to read. The notification's own "increase the limit" button writes `/proc/sys` directly, so that lasts until the next reboot; the drop-in is the same fix, declared.
+
+Raising the ceiling is the second thing to do, though. First find out who is holding 100k watches, because it is usually one process and usually a mistake:
+
+```bash
+for fd in /proc/[0-9]*/fdinfo/*; do
+    c=$(grep -c '^inotify ' "$fd" 2>/dev/null) || continue
+    [ "$c" -gt 0 ] && echo "$c $(cat /proc/"$(echo "$fd" | cut -d/ -f3)"/comm 2>/dev/null)"
+done | awk '{a[$2]+=$1} END {for (k in a) printf "%8d  %s\n", a[k], k}' | sort -rn | head
+```
+
+The usual suspects, in order: `code` recursively watching a `node_modules` or a `.direnv` tree (exclude them in `files.watcherExclude`), `baloo_file` indexing all of `$HOME` (`balooctl6 suspend`, or turn off indexing in System Settings), and anything syncing a large directory.

@@ -40,6 +40,7 @@ modules:
         - zsh # login shell must be a system path. ublue removes /usr/bin/chsh — use `ujust set-default-shell`
         - kitty # from the RPM so it gets the system GL drivers (this is what nixGL worked around)
         - code # VS Code. RPM, not flatpak: the sandbox can't see the nix store or direnv
+        - qt6-qttools # for qdbus-qt6. Already in the base, listed so qdbus-compat.sh can rely on it
         # Nix, from Fedora rather than the Determinate installer. This is layer 2's
         # foundation (Home Manager, per-project dev shells) so a fresh machine has
         # to have it before it can do anything, and downloading an installer over
@@ -58,6 +59,13 @@ modules:
   - type: script
     scripts:
       - nix-store.sh
+
+  # Fedora only ships `qdbus-qt6`, and plasma-manager (layer 2) calls plain `qdbus`
+  # to apply every panel and wallpaper setting. Without the link, none of them ever
+  # apply and it fails silently at each login. See the script for the details.
+  - type: script
+    scripts:
+      - qdbus-compat.sh
 
   - type: systemd
     system:

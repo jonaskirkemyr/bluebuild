@@ -157,7 +157,9 @@ One trap worth knowing before writing a recipe that touches files: `ujust` only 
 
 ### Ship a config file
 
-Drop the file into `files/system/` mirroring its real path, e.g. `files/system/etc/sysctl.d/99-custom.conf` becomes `/etc/sysctl.d/99-custom.conf`. The `files` module at the top of the recipe already copies everything under `files/system/`, so no recipe change is needed.
+Drop the file into `files/system/` mirroring its real path. The `files` module at the top of the recipe already copies everything under `files/system/`, so no recipe change is needed. [`files/system/usr/lib/sysctl.d/90-inotify.conf`](../files/system/usr/lib/sysctl.d/90-inotify.conf) is the worked example: it lands at `/usr/lib/sysctl.d/90-inotify.conf` and raises the inotify limits.
+
+Note `/usr/lib` rather than `/etc` there. For config that has both directories — sysctl, systemd units, tmpfiles, udev — ship the image's copy in `/usr/lib`: `/etc` wins over it, which keeps `/etc` free as the place to override a machine locally, and keeps you out of ostree's 3-way `/etc` merge. Use `files/system/etc/` only for files with nowhere else to go.
 
 Only for **system** config. Your own dotfiles (`~/.zshrc`, `~/.config/...`) are layer 2 and don't belong in the image — they live in the `nix-config` repo, see [SETUP.md](SETUP.md).
 
@@ -293,6 +295,7 @@ Keep a backup of `cosign.key` somewhere safe (a password manager). It's git-igno
 - **Don't layer packages with `rpm-ostree install` on the running machine.** It works, but it's exactly the drift this setup exists to prevent. Put it in the recipe instead.
 - **Changes only take effect after a reboot.** There's no `switch`-without-reboot equivalent.
 - **A `.md`-only change won't trigger a build** (`paths-ignore` in the workflow). That's deliberate.
+- **Fedora names Qt binaries after their Qt version**, so there is no `qdbus`, only `qdbus-qt6` (and `qdbus-qt5`). Anything written for a distro that ships one Qt — plasma-manager's whole desktop-script mechanism, for one — calls the bare name and fails with "command not found". [`files/scripts/qdbus-compat.sh`](../files/scripts/qdbus-compat.sh) links it back. Worth remembering as a shape of bug: the layer-2 config was correct and silently did nothing.
 
 ## Cheat sheet
 
