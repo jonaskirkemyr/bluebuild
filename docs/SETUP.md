@@ -97,7 +97,7 @@ packages = with pkgs; [ nodejs_22 pnpm ];
 | a CA certificate to trust | `files/system/usr/share/pki/ca-trust-source/anchors/` in this repo | [`ca-trust.sh`](../files/scripts/ca-trust.sh) rebuilds the bundle at build time. Firefox and Java keep their own stores and ignore it |
 | a kernel tunable (`sysctl`), e.g. the inotify limits | `files/system/usr/lib/sysctl.d/` in this repo | per-machine, needs root, and `/usr/lib` leaves `/etc/sysctl.d` free as your local override |
 | system locale, keyboard layout, timezone | `recipe.yml` (`script` → [`system-defaults.sh`](../files/scripts/system-defaults.sh)) | otherwise `systemd-firstboot` asks for all three on the first boot of every fresh install |
-| your actual data, backed up | a real backup tool | nothing here backs up `/home` |
+| your actual data, backed up | Pika Backup (in the image; the setup is per user, in its GUI) | nothing else here backs up `/home`. See [below](#back-up-home) |
 
 ## When something goes wrong
 
@@ -116,7 +116,7 @@ packages = with pkgs; [ nodejs_22 pnpm ];
 | `ujust create-flake`: "`~/nix-config` not found" | the templates live in that repo: `ujust setup-home-manager` first |
 | a template you just edited in `~/nix-config` isn't what `create-flake` writes | Nix only sees *committed* files in a git checkout, so commit it (or `git add` it) and re-run |
 | a project's dev shell doesn't activate on `cd` | `direnv allow` in the directory, and check `.envrc` exists. `direnv status` says which RC file it found and whether it's allowed |
-| `/var` is filling up | that's the Nix store at `/var/lib/nix`. `nix store gc` |
+| `/var` is filling up | that's the Nix store at `/var/lib/nix`. Home Manager collects it weekly (`systemctl --user list-timers nix-gc.timer`); `nix store gc` does it now |
 | edits to `~/.zshrc` keep vanishing | expected — Home Manager owns that file now. Edit `home/home.nix` and switch |
 | new shell has no prompt/aliases | your login shell is still bash: `ujust set-default-shell` |
 | git says "please tell me who you are" | `~/.config/git/identity` is missing: `ujust set-git-identity <username>` |
@@ -126,6 +126,18 @@ packages = with pkgs; [ nodejs_22 pnpm ];
 | want a different locale/layout/timezone on new installs | edit the three variables at the top of [`system-defaults.sh`](../files/scripts/system-defaults.sh) and push. On a machine that's already installed, use System Settings or `localectl`/`timedatectl` — `/etc` is a 3-way merge, so your local value wins over the image's |
 | image update didn't take | `rpm-ostree status` — an update is *staged*, it applies on reboot |
 | a rolled-back image still has broken tools | the Nix store lives outside the image, so `rpm-ostree rollback` doesn't touch it; use `home-manager generations` |
+
+## Back up /home
+
+Nothing in the image, Home Manager or a project flake is backed up, and doesn't need to be: all three can be rebuilt from git. What can't is `/home`. **Pika Backup** is installed for that: open it from the app menu, create a backup, and turn on *Schedule*. It uses [Borg](https://www.borgbackup.org/), so backups are deduplicated, compressed and encrypted, and after the first one each run only sends what changed.
+
+Where to back up to:
+
+- **a NAS, over SSH**: the best option. Choose *Remote Location* and enter `ssh://user@nas/./backups/<hostname>`. The NAS needs SSH and the `borg` binary (many can run it, some only through a community package; check yours before buying for this). Set up an SSH key first (`ssh-copy-id user@nas`), so scheduled runs don't ask for a password.
+- **a NAS share mounted over SMB/NFS**: works if the NAS can't run `borg`. Slower, and a dropped mount fails the run.
+- **a USB disk**: fine in the meantime. The backup runs when the disk is plugged in.
+
+Keep the encryption password in Bitwarden: without it the backup can't be read, and the only other copy is in this machine's keyring, which is exactly what you lose when you need the backup. Now and then, restore a single file (*Archives → Browse*) to check the backup is actually usable.
 
 ## When inotify runs out of watches
 

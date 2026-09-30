@@ -125,6 +125,7 @@ modules:
           - org.mozilla.firefox
           - com.jetbrains.IntelliJ-IDEA-Community
           - com.bitwarden.desktop # the CLI (bw) is in nix-config
+          - org.gnome.World.PikaBackup # backs up /home. See docs/SETUP.md
       - scope: user # Also add Flathub user repo, but no user packages
 
   # no dotfiles module here: Home Manager owns layer 2 (see the nix-config repo)
