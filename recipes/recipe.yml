@@ -34,12 +34,18 @@ modules:
         - https://packages.microsoft.com/keys/microsoft.asc
       files:
         - vscode.repo # files/dnf/vscode.repo
+        - microsoft-edge.repo # files/dnf/microsoft-edge.repo
     install:
       packages:
         - micro
         - zsh # login shell must be a system path. ublue removes /usr/bin/chsh — use `ujust set-default-shell`
         - kitty # from the RPM so it gets the system GL drivers (this is what nixGL worked around)
         - code # VS Code. RPM, not flatpak: the sandbox can't see the nix store or direnv
+        # the default browser (see files/system/etc/xdg/kde-mimeapps.list). RPM, not
+        # the Flathub one: that is an unofficial repackaging, and the RPM's NSS goes
+        # through Fedora's p11-kit, so it trusts the system CA store (ca-trust.sh).
+        # It installs to /opt, which BlueBuild relocates automatically
+        - microsoft-edge-stable
         - qt6-qttools # for qdbus-qt6. Already in the base, listed so qdbus-compat.sh can rely on it
         # Nix, from Fedora rather than the Determinate installer. This is layer 2's
         # foundation (Home Manager, per-project dev shells) so a fresh machine has
@@ -66,6 +72,12 @@ modules:
   - type: script
     scripts:
       - qdbus-compat.sh
+
+  # trusts the CA certificates under files/system/usr/share/pki/ca-trust-source/
+  # (the homelab root CA). Needs the files module above to have run first
+  - type: script
+    scripts:
+      - ca-trust.sh
 
   - type: systemd
     system:
@@ -112,6 +124,7 @@ modules:
         install: # system flatpaks we want all users to have and not remove
           - org.mozilla.firefox
           - com.jetbrains.IntelliJ-IDEA-Community
+          - com.bitwarden.desktop # the CLI (bw) is in nix-config
       - scope: user # Also add Flathub user repo, but no user packages
 
   # no dotfiles module here: Home Manager owns layer 2 (see the nix-config repo)

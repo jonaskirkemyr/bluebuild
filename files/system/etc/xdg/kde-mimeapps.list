@@ -1,0 +1,10 @@
+# Edge as the default browser for every user. The base image points these at
+# Falkon, in /usr/share/applications/kde-mimeapps.list; per the XDG spec this file
+# ($XDG_CONFIG_DIRS) is read before that one ($XDG_DATA_DIRS), so it wins. A user
+# who picks something else in System Settings gets ~/.config/mimeapps.list, which
+# wins over both.
+[Default Applications]
+x-scheme-handler/http=microsoft-edge.desktop
+x-scheme-handler/https=microsoft-edge.desktop
+text/html=microsoft-edge.desktop
+application/xhtml+xml=microsoft-edge.desktop

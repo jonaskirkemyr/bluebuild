@@ -83,7 +83,9 @@ packages = with pkgs; [ nodejs_22 pnpm ];
 | Nix itself, and the nix daemon | `recipe.yml` (`dnf`) | layer 2 can't bootstrap itself; and a shared store needs a system mount unit and system build users, which are not things a user config can create |
 | `.zshrc`, aliases, prompt, git config, `kitty.conf` | `nix-config` (Home Manager) | changes often; no rebuild, no reboot |
 | GUI apps that need GL or host toolchains (`kitty`, `code`) | `recipe.yml` (`dnf`) | must see the real drivers and the Nix store; a Flatpak sandbox can't |
-| other GUI apps (Firefox, IntelliJ) | `recipe.yml` (`default-flatpaks`) | updates independently of the image, doesn't bloat it |
+| the browser (Edge) | `recipe.yml` (`dnf`) | the RPM is Microsoft's own build and trusts the system CA store; the Flatpak is neither |
+| the default browser | `files/system/etc/xdg/kde-mimeapps.list` | a system-wide default; picking another in System Settings still wins for that user |
+| other GUI apps (Firefox, IntelliJ, Bitwarden) | `recipe.yml` (`default-flatpaks`) | updates independently of the image, doesn't bloat it |
 | CLI tools | `nix-config` (`home.packages`) | unless it needs a system path or GL, then `recipe.yml` |
 | fonts | `recipe.yml` (`fonts`) | fontconfig should serve them to Flatpaks too |
 | KDE panel layout, widgets (plasmoids), themes, shortcuts | `nix-config` (Home Manager + [plasma-manager](https://github.com/nix-community/plasma-manager)) | it's all `~/.config/plasma*` — per-user and changes often, so no rebuild and no reboot |
@@ -91,6 +93,7 @@ packages = with pkgs; [ nodejs_22 pnpm ];
 | Node 18 here, Node 24 there | `flake.nix` + `.envrc` in the project | the image has no per-directory concept; the recipe is global, always |
 | the starting point for one of those `flake.nix` files | `nix-config` (`templates/`) | `ujust create-flake` is a wrapper around `nix flake init -t`; the templates change often, and a change in the image costs a build and a reboot |
 | a systemd unit or `/etc` file | `files/system/` in this repo | |
+| a CA certificate to trust | `files/system/usr/share/pki/ca-trust-source/anchors/` in this repo | [`ca-trust.sh`](../files/scripts/ca-trust.sh) rebuilds the bundle at build time. Firefox and Java keep their own stores and ignore it |
 | a kernel tunable (`sysctl`), e.g. the inotify limits | `files/system/usr/lib/sysctl.d/` in this repo | per-machine, needs root, and `/usr/lib` leaves `/etc/sysctl.d` free as your local override |
 | system locale, keyboard layout, timezone | `recipe.yml` (`script` → [`system-defaults.sh`](../files/scripts/system-defaults.sh)) | otherwise `systemd-firstboot` asks for all three on the first boot of every fresh install |
 | your actual data, backed up | a real backup tool | nothing here backs up `/home` |

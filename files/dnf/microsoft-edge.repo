@@ -1,0 +1,8 @@
+[microsoft-edge]
+name=Microsoft Edge
+baseurl=https://packages.microsoft.com/yumrepos/edge
+enabled=1
+type=rpm-md
+gpgcheck=1
+gpgkey=https://packages.microsoft.com/keys/microsoft.asc
+# Written by hand for the same reason as vscode.repo: keep signature checking on.
