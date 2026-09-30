@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=System Guide
+GenericName=Help for this image
+Comment=Common commands, and whether something goes in the image, Home Manager or a project flake
+# same page as `ujust docs` (files/justfiles/help.just)
+Exec=xdg-open https://github.com/jonaskirkemyr/bluebuild/blob/main/docs/SETUP.md
+Icon=help-contents
+Terminal=false
+Categories=System;Documentation;
+Keywords=help;guide;docs;ujust;setup;nix;home-manager;

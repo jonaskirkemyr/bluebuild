@@ -50,6 +50,7 @@ ujust set-git-identity <username>         # re-run; signing now turns on
 | undo a bad image update | `rpm-ostree rollback && systemctl reboot` |
 | give one project its own toolchain | `ujust create-flake <language>` in the project directory — see below |
 | know whether something belongs in the image or in Nix | see the table at the bottom |
+| find this page again | `ujust docs`, or *System Guide* in the app menu |
 
 ## Give a project its own toolchain
 
