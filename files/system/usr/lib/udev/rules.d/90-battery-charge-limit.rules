@@ -1,0 +1,10 @@
+# Battery charge limit: start charging below 80 %, stop at 90 %.
+#
+# This is what System Settings -> Power Management -> "Charge limit" writes. It is
+# not a KDE setting that can live in a user's config: PowerDevil hands the values
+# to a root helper that writes these two sysfs files, so a rule is the declarative
+# way to get the same result on every boot.
+#
+# Machines whose battery has no threshold support (or is not BAT0) ignore the
+# assignments, so this is harmless on them.
+ACTION=="add|change", SUBSYSTEM=="power_supply", KERNEL=="BAT0", ATTR{charge_control_start_threshold}="80", ATTR{charge_control_end_threshold}="90"
