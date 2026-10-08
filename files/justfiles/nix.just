@@ -8,7 +8,7 @@
 
 nix_config_repo := "https://github.com/jonaskirkemyr/nix-config.git"
 nix_config_dir := "nix-config"
-hm_release := "release-25.11"
+hm_release := "release-26.05"
 # no username here: the flake exposes one homeConfiguration per login name and
 # these recipes select "$USER" at runtime, so the image is not tied to one user
 # must match the `programs.git.includes` path in the nix-config repo
