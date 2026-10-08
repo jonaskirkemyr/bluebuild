@@ -44,6 +44,7 @@ ujust set-git-identity <username>         # re-run; signing now turns on
 | add/remove a system package, Flatpak or font | edit [`recipes/recipe.yml`](../recipes/recipe.yml), push, then `ujust update` on the machine |
 | change my `.zshrc`, aliases, prompt, git config | edit `~/nix-config/home/home.nix`, then `home-manager switch --flake ~/nix-config#$USER` |
 | change the KDE panel, its widgets, the clock, wallpaper or virtual desktops | edit `~/nix-config/home/plasma.nix`, `home-manager switch`, then log out and back in |
+| apply my touchpad and power-management settings to this machine | `ujust configure-plasma` — edit [`files/justfiles/plasma.just`](../files/justfiles/plasma.just) to change them. KDE keeps these per device or behind a root helper, so `nix-config` can't declare them |
 | pull my config changes from another machine | `ujust update-home-manager` |
 | change my git name/email/signing key | `ujust set-git-identity <username>` |
 | undo a bad Home Manager change | `home-manager generations`, then run the `activate` path of an older one |
