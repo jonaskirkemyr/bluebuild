@@ -87,7 +87,10 @@ packages = with pkgs; [ nodejs_22 pnpm ];
 | GUI apps that need GL or host toolchains (`kitty`, `code`) | `recipe.yml` (`dnf`) | must see the real drivers and the Nix store; a Flatpak sandbox can't |
 | the browser (Edge) | `recipe.yml` (`dnf`) | the RPM is Microsoft's own build and trusts the system CA store; the Flatpak is neither |
 | the default browser | `files/system/etc/xdg/kde-mimeapps.list` | a system-wide default; picking another in System Settings still wins for that user |
-| other GUI apps (Firefox, IntelliJ, Bitwarden) | `recipe.yml` (`default-flatpaks`) | updates independently of the image, doesn't bloat it |
+| other GUI apps (Firefox, Bitwarden) | `recipe.yml` (`default-flatpaks`) | updates independently of the image, doesn't bloat it |
+| IntelliJ | `nix-config` (`home.packages`) | it has to see nix dev shells, direnv and their JDKs, which a Flatpak sandbox can't. It's the one GUI app that comes from Nix |
+| Claude Code (`claude`) | `nix-config` (`home.packages`) | a CLI tool |
+| a browser extension that must be on every install (Bitwarden, for passkeys) | `files/system/etc/opt/edge/policies/managed/` in this repo | Edge reads force-install policies from there; the extension can't be removed from the browser |
 | CLI tools | `nix-config` (`home.packages`) | unless it needs a system path or GL, then `recipe.yml` |
 | fonts | `recipe.yml` (`fonts`) | fontconfig should serve them to Flatpaks too |
 | KDE panel layout, widgets (plasmoids), themes, shortcuts | `nix-config` (Home Manager + [plasma-manager](https://github.com/nix-community/plasma-manager)) | it's all `~/.config/plasma*` — per-user and changes often, so no rebuild and no reboot |

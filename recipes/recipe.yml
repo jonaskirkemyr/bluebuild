@@ -123,7 +123,6 @@ modules:
         # If no repo information is specified, Flathub will be used by default
         install: # system flatpaks we want all users to have and not remove
           - org.mozilla.firefox
-          - com.jetbrains.IntelliJ-IDEA-Community
           - com.bitwarden.desktop # the CLI (bw) is in nix-config
           - org.gnome.World.PikaBackup # backs up /home. See docs/SETUP.md
       - scope: user # Also add Flathub user repo, but no user packages
