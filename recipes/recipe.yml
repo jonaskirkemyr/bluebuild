@@ -125,6 +125,8 @@ modules:
           - org.mozilla.firefox
           - com.bitwarden.desktop # the CLI (bw) is in nix-config
           - org.gnome.World.PikaBackup # backs up /home. See docs/SETUP.md
+        remove: # dropping a line from install: never uninstalls it
+          - com.jetbrains.IntelliJ-IDEA-Community # IntelliJ comes from nix-config
       - scope: user # Also add Flathub user repo, but no user packages
 
   # no dotfiles module here: Home Manager owns layer 2 (see the nix-config repo)
