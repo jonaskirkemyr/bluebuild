@@ -125,6 +125,7 @@ modules:
           - org.mozilla.firefox
           - com.bitwarden.desktop # the CLI (bw) is in nix-config
           - org.gnome.World.PikaBackup # backs up /home. See docs/SETUP.md
+          - org.fedoraproject.MediaWriter # flash install media to USB
         remove: # dropping a line from install: never uninstalls it
           - com.jetbrains.IntelliJ-IDEA-Community # IntelliJ comes from nix-config
       - scope: user # Also add Flathub user repo, but no user packages
